@@ -483,7 +483,7 @@ class _ExpandableFabState extends State<ExpandableFab>
     _open = widget.initialOpen ?? false;
     _controller = AnimationController(
       value: _open ? 1.0 : 0.0,
-      duration: const Duration(milliseconds: 250),
+      duration: const Duration(milliseconds: 350), // Slightly slower for elegance
       vsync: this,
     );
     _expandAnimation = CurvedAnimation(
@@ -516,11 +516,29 @@ class _ExpandableFabState extends State<ExpandableFab>
         alignment: Alignment.bottomRight,
         clipBehavior: Clip.none,
         children: [
+          _buildScrim(),
           _buildTapToCloseFab(),
           ..._buildExpandingActionButtons(),
           _buildTapToOpenFab(),
         ],
       ),
+    );
+  }
+
+  Widget _buildScrim() {
+    return AnimatedBuilder(
+      animation: _expandAnimation,
+      builder: (context, child) {
+        return IgnorePointer(
+          ignoring: !_open,
+          child: GestureDetector(
+            onTap: _toggle,
+            child: Container(
+              color: Colors.black.withOpacity(_expandAnimation.value * 0.4),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -557,9 +575,12 @@ class _ExpandableFabState extends State<ExpandableFab>
         i++, angleInDegrees += step) {
       children.add(
         _ExpandingActionButton(
-          directionInDegrees: angleInDegrees + 90, // Start from top (90 degrees)
+          // 90 degrees is Up (dy=1, dx=0 -> bottom increases, right static)
+          // 0 degrees is Left (dy=0, dx=1 -> bottom static, right increases)
+          directionInDegrees: 90.0 - angleInDegrees,
           maxDistance: widget.distance,
           progress: _expandAnimation,
+          index: i,
           child: widget.children[i],
         ),
       );
@@ -587,6 +608,8 @@ class _ExpandableFabState extends State<ExpandableFab>
             onPressed: _toggle,
             icon: const Icon(Icons.filter_list),
             label: const Text('Select Category'),
+            elevation: 4,
+            highlightElevation: 8,
           ),
         ),
       ),
@@ -601,12 +624,14 @@ class _ExpandingActionButton extends StatelessWidget {
     required this.maxDistance,
     required this.progress,
     required this.child,
+    required this.index,
   });
 
   final double directionInDegrees;
   final double maxDistance;
   final Animation<double> progress;
   final Widget child;
+  final int index;
 
   @override
   Widget build(BuildContext context) {
@@ -617,19 +642,30 @@ class _ExpandingActionButton extends StatelessWidget {
           directionInDegrees * (math.pi / 180.0),
           progress.value * maxDistance,
         );
+        
+        // Staggered fade and scale
+        final delay = index * 0.1;
+        final intervalStart = delay;
+        final intervalEnd = (delay + 0.5).clamp(0.0, 1.0);
+        
+        final curvedValue = Curves.easeOutBack.transform(
+          ((progress.value - intervalStart) / (intervalEnd - intervalStart))
+              .clamp(0.0, 1.0),
+        );
+
         return Positioned(
-          right: 4.0 + offset.dx, // Adjust for FAB padding
+          right: 4.0 + offset.dx,
           bottom: 4.0 + offset.dy,
-          child: Transform.rotate(
-            angle: (1.0 - progress.value) * math.pi / 2,
-            child: child!,
+          child: Transform.scale(
+            scale: curvedValue,
+            child: Opacity(
+              opacity: curvedValue.clamp(0.0, 1.0),
+              child: child!,
+            ),
           ),
         );
       },
-      child: FadeTransition(
-        opacity: progress,
-        child: child,
-      ),
+      child: child,
     );
   }
 }
@@ -653,25 +689,41 @@ class ActionButton extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Material(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          color: Colors.white,
-          elevation: 2,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: Colors.black87,
+            ),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 12),
         Material(
           shape: const CircleBorder(),
           clipBehavior: Clip.antiAlias,
           color: theme.colorScheme.primary,
-          elevation: 4.0,
+          elevation: 6.0,
+          shadowColor: theme.colorScheme.primary.withOpacity(0.4),
           child: IconButton(
             onPressed: onPressed,
             icon: icon,
             color: theme.colorScheme.onPrimary,
+            padding: const EdgeInsets.all(12),
+            iconSize: 24,
           ),
         ),
       ],
