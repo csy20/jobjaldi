@@ -1,6 +1,6 @@
 package scrapers
 
-import "jobjaldi/backend/internal/jobs"
+import "jobjaldi/internal/jobs"
 
 // Scraper defines the interface for a job board scraper
 type Scraper interface {

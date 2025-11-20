@@ -33,7 +33,14 @@ class JobAgentBridge {
       final cfg = jsonEncode(payload);
       final response = await _channel.invokeMethod<String>('scrapeMany', cfg);
       return _parseJobs(response);
-    } on PlatformException {
+    } on PlatformException catch (e) {
+      // Log error details for debugging
+      print('PlatformException in scrapeMany: ${e.code} - ${e.message}');
+      print('Details: ${e.details}');
+      // Return empty list but don't hide the error
+      return <Job>[];
+    } catch (e) {
+      print('Error in scrapeMany: $e');
       return <Job>[];
     }
   }

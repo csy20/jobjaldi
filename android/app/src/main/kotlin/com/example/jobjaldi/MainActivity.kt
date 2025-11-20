@@ -38,11 +38,21 @@ class MainActivity : FlutterActivity() {
         }
 
         try {
+            Log.d(TAG, "Calling scrapeMany with config: $cfg")
             val payload = Jobagent.scrapeMany(cfg)
-            result.success(payload)
+            Log.d(TAG, "scrapeMany returned payload length: ${payload?.length ?: 0}")
+            if (payload.isNullOrEmpty()) {
+                Log.w(TAG, "scrapeMany returned empty payload")
+                result.success(EMPTY_JSON)
+            } else {
+                result.success(payload)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Jobagent.scrapeMany failed", e)
-            result.success(EMPTY_JSON)
+            Log.e(TAG, "Error message: ${e.message}")
+            Log.e(TAG, "Error stack trace: ${e.stackTraceToString()}")
+            // Return error to Flutter instead of empty JSON
+            result.error("SCRAPE_ERROR", "Failed to scrape jobs: ${e.message}", null)
         }
     }
 }

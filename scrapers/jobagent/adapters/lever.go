@@ -28,11 +28,14 @@ func FetchLever(ctx context.Context, client *http.Client, ua, company string) ([
 	url := fmt.Sprintf("%s/%s", leverBaseURL, company)
 	doc, err := fetchDocument(ctx, client, ua, url)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("lever request failed: %w", err)
 	}
 
-	jobs := make([]Job, 0)
-	doc.Find("div.posting").Each(func(_ int, node *goquery.Selection) {
+	// Pre-allocate with estimated capacity (typical Lever pages have 20-50 jobs)
+	postings := doc.Find("div.posting")
+	jobs := make([]Job, 0, postings.Length())
+	
+	postings.Each(func(_ int, node *goquery.Selection) {
 		link := node.Find(".posting-title > a").First()
 		title := strings.TrimSpace(link.Text())
 		href, _ := link.Attr("href")

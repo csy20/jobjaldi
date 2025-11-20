@@ -58,17 +58,10 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final TextEditingController _searchController = TextEditingController();
-  final Map<String, bool> _levelFilters = {
-    'Intern': false,
-    'New Grad': false,
-    'Entry': false,
-  };
-
   List<Job> _jobs = <Job>[];
-  String _searchQuery = '';
   bool _isFetching = false;
   String _currentCategory = 'All';
+  DateTime? _lastFetchTime;
 
   // Define targets for different categories
   static const List<Target> _faangTargets = [
@@ -89,45 +82,33 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _searchController.addListener(() {
-      setState(() {
-        _searchQuery = _searchController.text;
-      });
-    });
-    // Initial fetch
     _refreshJobs('FAANG');
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  List<Job> get _filteredJobs {
-    final String query = _searchQuery.trim().toLowerCase();
-    final Set<String> activeLevels = _levelFilters.entries
-        .where((entry) => entry.value)
-        .map((entry) => entry.key.toLowerCase())
-        .toSet();
-
-    return _jobs.where((job) {
-      final String level = (job.level ?? '').toLowerCase();
-      final bool matchesLevel =
-          activeLevels.isEmpty || activeLevels.contains(level);
-      final bool matchesQuery =
-          query.isEmpty || job.title.toLowerCase().contains(query);
-      return matchesLevel && matchesQuery;
-    }).toList();
   }
 
   Future<void> _refreshJobs(String category) async {
     if (_isFetching) return;
 
+    // Avoid redundant fetches within 2 minutes
+    if (_currentCategory == category && 
+        _lastFetchTime != null && 
+        DateTime.now().difference(_lastFetchTime!).inMinutes < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Using cached ${category} jobs'),
+          duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isFetching = true;
+      // Check if category changed before updating
+      if (_currentCategory != category) {
+        _jobs = [];
+      }
       _currentCategory = category;
-      _jobs = []; // Clear current list to show loading state
     });
 
     final messenger = ScaffoldMessenger.of(context);
@@ -149,29 +130,51 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       if (targets.isEmpty) {
-        await Future.delayed(const Duration(milliseconds: 500)); // Fake delay
-        setState(() => _jobs = []);
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) setState(() => _jobs = []);
       } else {
         final jobs = await JobAgentBridge.scrapeMany(targets);
-        setState(() => _jobs = jobs);
+        if (mounted) {
+          setState(() {
+            _jobs = jobs;
+            _lastFetchTime = DateTime.now();
+          });
+        }
       }
-      
+
       if (mounted) {
-         messenger.hideCurrentSnackBar();
-         messenger.showSnackBar(
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
           SnackBar(
             content: Text('Found ${_jobs.length} $category jobs'),
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
     } catch (error) {
       if (mounted) {
+        // Log error for debugging
+        print('Error fetching jobs: $error');
         messenger.hideCurrentSnackBar();
         messenger.showSnackBar(
-          SnackBar(content: Text('Failed to fetch jobs: $error')),
+          SnackBar(
+            content: Text('Failed to fetch jobs: ${error.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: () => _refreshJobs(category),
+            ),
+          ),
         );
+        // Set fetching to false even on error
+        setState(() {
+          _isFetching = false;
+        });
       }
     } finally {
       if (mounted) {
@@ -188,83 +191,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final jobs = _filteredJobs;
+    final jobs = _jobs;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('JobJaldi'),
-        actions: [
-          if (kDebugMode)
-            IconButton(
-              icon: const Icon(Icons.bug_report_outlined),
-              onPressed: () => _refreshJobs('FAANG'),
-            ),
-        ],
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
+      body: _isFetching
+          ? const Center(child: CircularProgressIndicator())
+          : jobs.isEmpty
+              ? _buildEmptyState()
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: jobs.length,
+                  itemBuilder: (context, index) {
+                    final job = jobs[index];
+                    return _buildJobCard(job);
+                  },
                 ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.search, color: Colors.teal),
-                    hintText: 'Search for ${_currentCategory} roles...',
-                    filled: true,
-                    fillColor: Colors.grey.shade100,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: _FilterChips(
-                    filters: _levelFilters,
-                    onChanged: (label, selected) {
-                      setState(() {
-                        _levelFilters[label] = selected;
-                      });
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: _isFetching
-                ? const Center(child: CircularProgressIndicator())
-                : jobs.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: jobs.length,
-                        itemBuilder: (context, index) {
-                          final job = jobs[index];
-                          return _buildJobCard(job);
-                        },
-                      ),
-          ),
-        ],
-      ),
       floatingActionButton: ExpandableFab(
         distance: 112.0,
         children: [
@@ -413,45 +357,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _FilterChips extends StatelessWidget {
-  const _FilterChips({
-    required this.filters,
-    required this.onChanged,
-  });
-
-  final Map<String, bool> filters;
-  final void Function(String label, bool selected) onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: filters.entries.map((entry) {
-        return Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: FilterChip(
-            label: Text(entry.key),
-            selected: entry.value,
-            onSelected: (selected) => onChanged(entry.key, selected),
-            backgroundColor: Colors.white,
-            selectedColor: Colors.teal.shade100,
-            checkmarkColor: Colors.teal.shade700,
-            labelStyle: TextStyle(
-              color: entry.value ? Colors.teal.shade900 : Colors.grey.shade700,
-              fontWeight: entry.value ? FontWeight.bold : FontWeight.normal,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-              side: BorderSide(
-                color: entry.value ? Colors.teal.shade200 : Colors.grey.shade300,
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-}
-
 // --- Animated FAB Implementation ---
 
 @immutable
@@ -511,17 +416,24 @@ class _ExpandableFabState extends State<ExpandableFab>
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox.expand(
-      child: Stack(
-        alignment: Alignment.bottomRight,
-        clipBehavior: Clip.none,
-        children: [
-          _buildScrim(),
-          _buildTapToCloseFab(),
-          ..._buildExpandingActionButtons(),
-          _buildTapToOpenFab(),
-        ],
-      ),
+    return Stack(
+      alignment: Alignment.bottomRight,
+      clipBehavior: Clip.none,
+      fit: StackFit.expand,
+      children: [
+        _buildScrim(),
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: _buildTapToCloseFab(),
+        ),
+        ..._buildExpandingActionButtons(),
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: _buildTapToOpenFab(),
+        ),
+      ],
     );
   }
 
@@ -654,8 +566,8 @@ class _ExpandingActionButton extends StatelessWidget {
         );
 
         return Positioned(
-          right: 4.0 + offset.dx,
-          bottom: 4.0 + offset.dy,
+          right: 16.0 + offset.dx,
+          bottom: 16.0 + offset.dy,
           child: Transform.scale(
             scale: curvedValue,
             child: Opacity(
