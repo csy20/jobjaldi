@@ -73,10 +73,13 @@ func SimpleScrapeMany(cfgJSON string) (string, error) {
 				return
 			}
 
-			if len(targetJobs) > 0 {
-				jobCache.Set(cacheKey, targetJobs)
+			// Filter targetJobs by location before caching/appending
+			filteredJobs := filterJobsByLocation(targetJobs)
+
+			if len(filteredJobs) > 0 {
+				jobCache.Set(cacheKey, filteredJobs)
 				mu.Lock()
-				jobs = append(jobs, targetJobs...)
+				jobs = append(jobs, filteredJobs...)
 				mu.Unlock()
 			}
 		}(target)
@@ -90,4 +93,3 @@ func SimpleScrapeMany(cfgJSON string) (string, error) {
 
 	return marshalJobs(jobs)
 }
-
