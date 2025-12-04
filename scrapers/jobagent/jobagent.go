@@ -20,7 +20,7 @@ const userAgent = "csy-jobboard/1.0 (+personal-use)"
 
 // EnableSimpleMode temporarily disables optimizations for debugging
 // Set to true to bypass circuit breaker, rate limiting, and retry logic
-var EnableSimpleMode = true // TEMPORARILY ENABLED FOR DEBUGGING
+var EnableSimpleMode = false // Disabled for production/optimization
 
 var (
 	// HTTP transport with HTTP/2 support
@@ -153,8 +153,11 @@ func ScrapeProvider(provider, company string) (string, error) {
 		return "", err
 	}
 
-	jobCache.Set(cacheKey, jobs)
-	return marshalJobs(jobs)
+	// Filter jobs by location
+	filteredJobs := filterJobsByLocation(jobs)
+
+	jobCache.Set(cacheKey, filteredJobs)
+	return marshalJobs(filteredJobs)
 }
 
 // ScrapeMany processes a JSON config and fetches from all targets concurrently.
@@ -267,11 +270,14 @@ func ScrapeMany(cfgJSON string) (string, error) {
 					return
 				}
 
+				// Filter targetJobs by location before caching/appending
+				filteredJobs := filterJobsByLocation(targetJobs)
+
 				// Only cache and add if we got jobs
-				if len(targetJobs) > 0 {
-					jobCache.Set(cacheKey, targetJobs)
+				if len(filteredJobs) > 0 {
+					jobCache.Set(cacheKey, filteredJobs)
 					mu.Lock()
-					jobs = append(jobs, targetJobs...)
+					jobs = append(jobs, filteredJobs...)
 					mu.Unlock()
 				}
 			}(target)
@@ -392,4 +398,72 @@ func ResetCircuitBreaker(provider string) {
 			breaker.Reset()
 		}
 	}
+}
+
+// filterJobsByLocation filters jobs based on target locations (primarily India)
+func filterJobsByLocation(jobs []Job) []Job {
+	if len(jobs) == 0 {
+		return jobs
+	}
+
+	filtered := make([]Job, 0, len(jobs))
+	for _, job := range jobs {
+		if isTargetLocation(job.Location) {
+			filtered = append(filtered, job)
+		}
+	}
+	return filtered
+}
+
+// isTargetLocation checks if a location string matches our target locations (India)
+func isTargetLocation(location string) bool {
+	loc := strings.ToLower(location)
+
+	// Primary target: India
+	// Check for "India" but exclude "Indiana" (US state)
+	// Common patterns: "Bangalore, India", "India", "Remote - India"
+	if strings.Contains(loc, "india") && !strings.Contains(loc, "indiana") {
+		return true
+	}
+
+	// Major Indian cities
+	indianCities := []string{
+		"bangalore", "bengaluru",
+		"mumbai", "bombay",
+		"delhi", "new delhi", "ncr",
+		"hyderabad", "secunderabad",
+		"pune",
+		"chennai", "madras",
+		"kolkata", "calcutta",
+		"ahmedabad",
+		"gurgaon", "gurugram",
+		"noida",
+		"chandigarh",
+		"jaipur",
+		"indore",
+		"kochi", "cochin",
+		"trivandrum", "thiruvananthapuram",
+		"mysore", "mysuru",
+		"bhubaneswar",
+		"coimbatore",
+		"nagpur",
+		"lucknow",
+		"surat",
+		"visakhapatnam", "vizag",
+	}
+
+	for _, city := range indianCities {
+		// Check for word boundaries or simple contains if unambiguous
+		if strings.Contains(loc, city) {
+			// Double check if city name matches something in Indiana/USA?
+			// Most of these are fairly unique to India, or the "Indiana" check above covers generic "India" issues.
+			// "Hyderabad" also exists in Pakistan but user context is India vs US.
+			// "Kochi" is unique enough in this context (Japanese Kochi is usually not "Kochi, India").
+			// "Salem" (in Tamil Nadu) is also in US (Oregon, MA, etc), but not in our major list yet.
+			// Sticking to major cities reduces ambiguity.
+			return true
+		}
+	}
+
+	return false
 }
