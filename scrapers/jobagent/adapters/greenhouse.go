@@ -64,7 +64,7 @@ func FetchGreenhouse(ctx context.Context, client *http.Client, ua, company strin
 		req.Header.Set("User-Agent", ua)
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Accept-Encoding", "gzip, deflate")
+	// Do not manually set Accept-Encoding, let http.Transport handle it
 
 	resp, err := client.Do(req)
 	if err != nil {

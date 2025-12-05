@@ -8,12 +8,17 @@ class JobService {
     Target(provider: 'greenhouse', company: 'airbnb'),
     Target(provider: 'greenhouse', company: 'roblox'),
     Target(provider: 'greenhouse', company: 'databricks'),
+    Target(provider: 'greenhouse', company: 'twitch'),
+    Target(provider: 'greenhouse', company: 'lyft'),
   ];
 
   static const List<Target> _itTargets = [
     Target(provider: 'greenhouse', company: 'asana'),
     Target(provider: 'greenhouse', company: 'scaleai'),
     Target(provider: 'lever', company: 'openai'),
+    Target(provider: 'greenhouse', company: 'reddit'),
+    Target(provider: 'greenhouse', company: 'pinterest'),
+    Target(provider: 'greenhouse', company: 'doordashusa'), // Main US board, check for remote/global
   ];
 
   static const List<Target> _govTargets = [];
