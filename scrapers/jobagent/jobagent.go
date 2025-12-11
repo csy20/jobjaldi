@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/csy/jobagent/jobagent/adapters"
 	"golang.org/x/net/http2"
@@ -140,11 +141,11 @@ func ScrapeProvider(provider, company string) (string, error) {
 		result, retryErr := RetryWithBackoff(ctx, retryConfig, func() (interface{}, error) {
 			return fetcher(ctx, httpClient, userAgent, company)
 		})
-		
+
 		if retryErr != nil {
 			return retryErr
 		}
-		
+
 		jobs = result.([]Job)
 		return nil
 	})
@@ -237,28 +238,28 @@ func ScrapeMany(cfgJSON string) (string, error) {
 				// Use circuit breaker and retry logic
 				cb := getCircuitBreaker(t.Provider)
 				var targetJobs []Job
-				
+
 				// Use circuit breaker and retry logic
 				// Note: Circuit breaker will handle open state internally
 				err = cb.Call(func() error {
 					result, retryErr := RetryWithBackoff(ctx, retryConfig, func() (interface{}, error) {
 						return fetcher(ctx, httpClient, userAgent, company)
 					})
-					
+
 					if retryErr != nil {
 						return retryErr
 					}
-					
+
 					if result == nil {
 						return fmt.Errorf("fetcher returned nil result")
 					}
-					
+
 					var ok bool
 					targetJobs, ok = result.([]Job)
 					if !ok {
 						return fmt.Errorf("fetcher returned invalid type: %T", result)
 					}
-					
+
 					return nil
 				})
 
@@ -317,12 +318,12 @@ func deduplicateTargets(targets []targetSpec) []targetSpec {
 // groupTargetsByProvider groups targets by provider for potential batching
 func groupTargetsByProvider(targets []targetSpec) map[string][]targetSpec {
 	groups := make(map[string][]targetSpec)
-	
+
 	for _, target := range targets {
 		provider := strings.ToLower(target.Provider)
 		groups[provider] = append(groups[provider], target)
 	}
-	
+
 	return groups
 }
 
@@ -400,34 +401,8 @@ func ResetCircuitBreaker(provider string) {
 	}
 }
 
-// filterJobsByLocation filters jobs based on target locations (primarily India)
-func filterJobsByLocation(jobs []Job) []Job {
-	if len(jobs) == 0 {
-		return jobs
-	}
-
-	filtered := make([]Job, 0, len(jobs))
-	for _, job := range jobs {
-		if isTargetLocation(job.Location) {
-			filtered = append(filtered, job)
-		}
-	}
-	return filtered
-}
-
-// isTargetLocation checks if a location string matches our target locations (India)
-func isTargetLocation(location string) bool {
-	loc := strings.ToLower(location)
-
-	// Primary target: India
-	// Check for "India" but exclude "Indiana" (US state)
-	// Common patterns: "Bangalore, India", "India", "Remote - India"
-	if strings.Contains(loc, "india") && !strings.Contains(loc, "indiana") {
-		return true
-	}
-
-	// Major Indian cities
-	indianCities := []string{
+var (
+	targetIndianCities = []string{
 		"bangalore", "bengaluru",
 		"mumbai", "bombay",
 		"delhi", "new delhi", "ncr",
@@ -476,18 +451,142 @@ func isTargetLocation(location string) bool {
 		"kota",
 	}
 
-	for _, city := range indianCities {
-		// Check for word boundaries or simple contains if unambiguous
+	blacklistedCountryFragments = []string{
+		"united states", "u.s.", "u.s", "u.s.a", "usa",
+		"canada",
+		"united kingdom", "u.k.", "u.k", "uk",
+		"england", "scotland", "wales",
+	}
+
+	blacklistedRegionTokens = map[string]struct{}{
+		// US/CA country codes or abbreviations that commonly show up in city strings
+		"ny": {}, "ca": {}, "tx": {}, "fl": {}, "nj": {}, "nc": {}, "sc": {}, "ga": {}, "oh": {}, "il": {},
+		"wa": {}, "pa": {}, "az": {}, "mn": {}, "mi": {}, "md": {}, "va": {}, "dc": {}, "ct": {}, "ri": {},
+		"nh": {}, "vt": {}, "ak": {}, "ks": {}, "ut": {}, "nv": {}, "nm": {}, "wi": {}, "ky": {}, "tn": {},
+		"al": {}, "ar": {}, "de": {}, "ia": {}, "mo": {}, "mt": {}, "nd": {}, "sd": {}, "wv": {}, "wy": {},
+		"qc": {}, "bc": {}, "ab": {}, "mb": {}, "sk": {}, "ns": {}, "nb": {}, "nl": {}, "pe": {},
+
+		// Full region names that should be excluded
+		"california":           {},
+		"texas":                {},
+		"florida":              {},
+		"washington":           {},
+		"oregon":               {},
+		"colorado":             {},
+		"georgia":              {},
+		"ohio":                 {},
+		"illinois":             {},
+		"massachusetts":        {},
+		"pennsylvania":         {},
+		"virginia":             {},
+		"arizona":              {},
+		"ontario":              {},
+		"quebec":               {},
+		"manitoba":             {},
+		"alberta":              {},
+		"saskatchewan":         {},
+		"nova scotia":          {},
+		"newfoundland":         {},
+		"labrador":             {},
+		"british columbia":     {},
+		"new york":             {},
+		"new jersey":           {},
+		"north carolina":       {},
+		"south carolina":       {},
+		"district of columbia": {},
+		"rhode island":         {},
+	}
+)
+
+// filterJobsByLocation filters jobs based on target locations (primarily India)
+func filterJobsByLocation(jobs []Job) []Job {
+	if len(jobs) == 0 {
+		return jobs
+	}
+
+	filtered := make([]Job, 0, len(jobs))
+	for _, job := range jobs {
+		if isTargetLocation(job.Location) {
+			filtered = append(filtered, job)
+		}
+	}
+	return filtered
+}
+
+// isTargetLocation checks if a location string matches our target locations (India)
+func isTargetLocation(location string) bool {
+	loc := strings.ToLower(strings.TrimSpace(location))
+	if loc == "" {
+		return false
+	}
+
+	if hasBlacklistedRegion(loc) {
+		return false
+	}
+
+	// Primary target: India
+	hasIndia := strings.Contains(loc, "india") && !strings.Contains(loc, "indiana")
+	hasIndianCity := false
+
+	if hasIndia {
+		return true
+	}
+
+	for _, city := range targetIndianCities {
 		if strings.Contains(loc, city) {
-			// Double check if city name matches something in Indiana/USA?
-			// Most of these are fairly unique to India, or the "Indiana" check above covers generic "India" issues.
-			// "Hyderabad" also exists in Pakistan but user context is India vs US.
-			// "Kochi" is unique enough in this context (Japanese Kochi is usually not "Kochi, India").
-			// "Salem" (in Tamil Nadu) is also in US (Oregon, MA, etc), but not in our major list yet.
-			// Sticking to major cities reduces ambiguity.
+			hasIndianCity = true
+			break
+		}
+	}
+
+	if hasIndianCity {
+		return true
+	}
+
+	if strings.Contains(loc, "remote") {
+		return false // Remote roles must explicitly mention India or an Indian city
+	}
+
+	return false
+}
+
+func hasBlacklistedRegion(loc string) bool {
+	for _, country := range blacklistedCountryFragments {
+		if strings.Contains(loc, country) {
+			return true
+		}
+	}
+
+	tokens := tokenizeLocation(loc)
+	for _, token := range tokens {
+		if _, blocked := blacklistedRegionTokens[token]; blocked {
+			return true
+		}
+	}
+
+	for i := 0; i+1 < len(tokens); i++ {
+		pair := tokens[i] + " " + tokens[i+1]
+		if _, blocked := blacklistedRegionTokens[pair]; blocked {
+			return true
+		}
+	}
+
+	for i := 0; i+2 < len(tokens); i++ {
+		trio := tokens[i] + " " + tokens[i+1] + " " + tokens[i+2]
+		if _, blocked := blacklistedRegionTokens[trio]; blocked {
 			return true
 		}
 	}
 
 	return false
+}
+
+func tokenizeLocation(loc string) []string {
+	return strings.FieldsFunc(loc, func(r rune) bool {
+		switch r {
+		case ',', '/', '\\', '|', '(', ')', '[', ']', '{', '}', '-', ';', ':':
+			return true
+		}
+		return unicode.IsSpace(r)
+	})
 }

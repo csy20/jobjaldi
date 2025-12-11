@@ -139,7 +139,6 @@ func fetchDocument(ctx context.Context, client *http.Client, ua, url string) (*g
 		req.Header.Set("User-Agent", ua)
 	}
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	req.Header.Set("Accept-Encoding", "gzip, deflate")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -187,7 +186,7 @@ func ensureAbsoluteURL(baseURL, href string) string {
 func inferLevel(title string) string {
 	// Convert to lowercase once
 	t := strings.ToLower(title)
-	
+
 	// Check in order of likelihood (most common first)
 	if strings.Contains(t, "intern") {
 		return "intern"
@@ -198,6 +197,6 @@ func inferLevel(title string) string {
 	if strings.Contains(t, "entry") {
 		return "entry"
 	}
-	
+
 	return ""
 }
