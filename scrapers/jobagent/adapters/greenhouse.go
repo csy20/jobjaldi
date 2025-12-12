@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -33,12 +34,13 @@ const (
 
 // Job describes a single scraped opening.
 type Job struct {
-	Title    string `json:"title"`
-	Company  string `json:"company"`
-	URL      string `json:"url"`
-	Location string `json:"location,omitempty"`
-	Source   string `json:"source"`
-	Level    string `json:"level"`
+	Title     string `json:"title"`
+	Company   string `json:"company"`
+	URL       string `json:"url"`
+	Location  string `json:"location,omitempty"`
+	Source    string `json:"source"`
+	Level     string `json:"level"`
+	UpdatedAt int64  `json:"updated_at,omitempty"` // Unix timestamp for date filtering
 }
 
 // Fetcher defines the adapter contract so callers can register providers dynamically.
@@ -107,13 +109,23 @@ func FetchGreenhouse(ctx context.Context, client *http.Client, ua, company strin
 		}
 
 		location := strings.TrimSpace(item.Location.Name)
+
+		// Parse updated_at timestamp
+		var updatedAt int64
+		if item.UpdatedAt != "" {
+			if t, err := time.Parse(time.RFC3339, item.UpdatedAt); err == nil {
+				updatedAt = t.Unix()
+			}
+		}
+
 		jobs = append(jobs, Job{
-			Title:    title,
-			Company:  jobCompany,
-			URL:      href,
-			Location: location,
-			Source:   greenhouseSource,
-			Level:    inferLevel(title),
+			Title:     title,
+			Company:   jobCompany,
+			URL:       href,
+			Location:  location,
+			Source:    greenhouseSource,
+			Level:     inferLevel(title),
+			UpdatedAt: updatedAt,
 		})
 	}
 	return jobs, nil
@@ -127,6 +139,7 @@ type greenhouseResponse struct {
 			Name string `json:"name"`
 		} `json:"location"`
 		CompanyName string `json:"company_name"`
+		UpdatedAt   string `json:"updated_at"` // ISO 8601 format
 	} `json:"jobs"`
 }
 

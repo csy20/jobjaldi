@@ -7,11 +7,11 @@ import (
 
 // RateLimiter implements a token bucket rate limiter
 type RateLimiter struct {
-	mu          sync.Mutex
-	tokens      float64
-	maxTokens   float64
-	refillRate  float64 // tokens per second
-	lastRefill  time.Time
+	mu         sync.Mutex
+	tokens     float64
+	maxTokens  float64
+	refillRate float64 // tokens per second
+	lastRefill time.Time
 }
 
 // RateLimiterConfig holds configuration for rate limiter
@@ -31,7 +31,7 @@ func NewRateLimiter(rate float64, burst int) *RateLimiter {
 
 	return &RateLimiter{
 		tokens:     float64(burst),
-		maxTokens: float64(burst),
+		maxTokens:  float64(burst),
 		refillRate: rate,
 		lastRefill: time.Now(),
 	}
@@ -61,18 +61,18 @@ func (rl *RateLimiter) Allow() bool {
 	return false
 }
 
-// Wait blocks until a token is available (with max wait time)
-func (rl *RateLimiter) Wait() {
+// WaitForToken blocks until a token is available (with max wait time)
+func (rl *RateLimiter) WaitForToken() {
 	maxWait := 5 * time.Second // Maximum wait time
 	start := time.Now()
-	
+
 	for !rl.Allow() {
 		// Check if we've waited too long
 		if time.Since(start) > maxWait {
 			// Force allow after max wait to prevent indefinite blocking
 			return
 		}
-		
+
 		// Calculate wait time
 		rl.mu.Lock()
 		neededTokens := 1.0 - rl.tokens
@@ -87,7 +87,7 @@ func (rl *RateLimiter) Wait() {
 		if waitTime > 1*time.Second {
 			waitTime = 1 * time.Second
 		}
-		
+
 		if waitTime > 0 {
 			time.Sleep(waitTime)
 		} else {
@@ -111,7 +111,7 @@ func NewProviderRateLimiters() *ProviderRateLimiters {
 
 	// Set provider-specific rate limits
 	prl.limiters["greenhouse"] = NewRateLimiter(10.0, 20) // 10 req/s, burst 20
-	prl.limiters["lever"] = NewRateLimiter(5.0, 10)        // 5 req/s, burst 10 (HTML scraping is heavier)
+	prl.limiters["lever"] = NewRateLimiter(5.0, 10)       // 5 req/s, burst 10 (HTML scraping is heavier)
 
 	// Default rate limiter
 	prl.defaultRL = NewRateLimiter(5.0, 10)
@@ -137,8 +137,7 @@ func (prl *ProviderRateLimiters) Allow(provider string) bool {
 	return prl.GetLimiter(provider).Allow()
 }
 
-// Wait waits until a request is allowed for a provider
-func (prl *ProviderRateLimiters) Wait(provider string) {
-	prl.GetLimiter(provider).Wait()
+// WaitForToken waits until a request is allowed for a provider
+func (prl *ProviderRateLimiters) WaitForToken(provider string) {
+	prl.GetLimiter(provider).WaitForToken()
 }
-

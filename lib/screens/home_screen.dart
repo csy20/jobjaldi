@@ -21,7 +21,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     Future.microtask(() {
-      ref.read(jobProvider.notifier).loadJobs('FAANG');
+      ref.read(jobProvider.notifier).loadJobs('MAANG');
     });
   }
 
@@ -284,10 +284,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             const Divider(),
             ListTile(
               leading: const Icon(Icons.business),
-              title: const Text('FAANG'),
-              selected: currentCategory == 'FAANG',
+              title: const Text('MAANG'),
+              selected: currentCategory == 'MAANG',
               onTap: () {
-                _changeCategory('FAANG');
+                _changeCategory('MAANG');
                 Navigator.pop(context);
               },
             ),

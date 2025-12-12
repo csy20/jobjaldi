@@ -157,6 +157,9 @@ func ScrapeProvider(provider, company string) (string, error) {
 	// Filter jobs by location
 	filteredJobs := filterJobsByLocation(jobs)
 
+	// Filter jobs by date (only recent posts)
+	filteredJobs = filterJobsByDate(filteredJobs)
+
 	jobCache.Set(cacheKey, filteredJobs)
 	return marshalJobs(filteredJobs)
 }
@@ -273,6 +276,9 @@ func ScrapeMany(cfgJSON string) (string, error) {
 
 				// Filter targetJobs by location before caching/appending
 				filteredJobs := filterJobsByLocation(targetJobs)
+
+				// Filter jobs by date (only recent posts)
+				filteredJobs = filterJobsByDate(filteredJobs)
 
 				// Only cache and add if we got jobs
 				if len(filteredJobs) > 0 {

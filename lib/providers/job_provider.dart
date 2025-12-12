@@ -17,7 +17,7 @@ class JobState {
     this.jobs = const [],
     this.isLoading = false,
     this.error,
-    this.currentCategory = 'FAANG',
+    this.currentCategory = 'MAANG',
     this.searchQuery = '',
     this.levelFilter,
     this.locationFilter,

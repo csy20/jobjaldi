@@ -3,36 +3,44 @@ import 'job_agent_bridge.dart';
 import 'cache_service.dart';
 
 class JobService {
-  static const List<Target> _faangTargets = [
-    Target(provider: 'greenhouse', company: 'stripe'),
-    Target(provider: 'greenhouse', company: 'airbnb'),
-    Target(provider: 'greenhouse', company: 'roblox'),
-    Target(provider: 'greenhouse', company: 'databricks'),
-    Target(provider: 'greenhouse', company: 'twitch'),
-    Target(provider: 'greenhouse', company: 'lyft'),
+  // MAANG-tier global tech companies with India presence
+  static const List<Target> _maangTargets = [
+    Target(provider: 'greenhouse', company: 'doordash'),        // DoorDash - Pune, Hyderabad
+    Target(provider: 'greenhouse', company: 'coinbase'),        // Coinbase - Hyderabad
+    Target(provider: 'greenhouse', company: 'uberfreight'),     // Uber Freight - Hyderabad
+    Target(provider: 'greenhouse', company: 'stripe'),          // Stripe - India
+    Target(provider: 'greenhouse', company: 'databricks'),      // Databricks - India
+    Target(provider: 'greenhouse', company: 'reddit'),          // Reddit - India
+    Target(provider: 'greenhouse', company: 'pinterest'),       // Pinterest - India
+    Target(provider: 'greenhouse', company: 'airbnb'),          // Airbnb - India
+    Target(provider: 'greenhouse', company: 'lyft'),            // Lyft - India
   ];
 
+  // Indian tech companies and startups
   static const List<Target> _itTargets = [
-    Target(provider: 'greenhouse', company: 'asana'),
-    Target(provider: 'greenhouse', company: 'scaleai'),
-    Target(provider: 'lever', company: 'openai'),
-    Target(provider: 'greenhouse', company: 'reddit'),
-    Target(provider: 'greenhouse', company: 'pinterest'),
-    Target(provider: 'greenhouse', company: 'doordashusa'), // Main US board, check for remote/global
+    Target(provider: 'greenhouse', company: 'policybazaar'),    // PolicyBazaar - India
+    Target(provider: 'greenhouse', company: 'razorpay'),        // Razorpay - India
+    Target(provider: 'greenhouse', company: 'swiggy'),          // Swiggy - India
+    Target(provider: 'greenhouse', company: 'zomato'),          // Zomato - India
+    Target(provider: 'lever', company: 'paytm'),                // Paytm - India
+    Target(provider: 'greenhouse', company: 'meesho'),          // Meesho - India
+    Target(provider: 'greenhouse', company: 'phonepe'),         // PhonePe - India
+    Target(provider: 'greenhouse', company: 'cred'),            // CRED - India
+    Target(provider: 'greenhouse', company: 'groww'),           // Groww - India
   ];
 
   static const List<Target> _govTargets = [];
 
   static List<Target> getTargetsForCategory(String category) {
     switch (category) {
-      case 'FAANG':
-        return _faangTargets;
+      case 'MAANG':
+        return _maangTargets;
       case 'IT Company':
         return _itTargets;
       case 'Gov Job':
         return _govTargets;
       default:
-        return [..._faangTargets, ..._itTargets];
+        return [..._maangTargets, ..._itTargets];
     }
   }
 
@@ -40,7 +48,9 @@ class JobService {
     if (useCache) {
       final cached = await CacheService.getCachedJobs(category);
       if (cached != null && cached.isNotEmpty) {
-        return cached;
+        // Shuffle cached jobs to show variety
+        final shuffled = List<Job>.from(cached)..shuffle();
+        return shuffled;
       }
     }
 
@@ -52,6 +62,8 @@ class JobService {
     final jobs = await JobAgentBridge.scrapeMany(targets);
     
     if (jobs.isNotEmpty) {
+      // Shuffle jobs to mix companies together
+      jobs.shuffle();
       await CacheService.cacheJobs(category, jobs);
     }
     
